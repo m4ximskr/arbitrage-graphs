@@ -2,9 +2,17 @@
 
 This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 18.2.2.
 
+## Setting up environment and dependencies
+
+Install [Node.js](https://nodejs.org/en/download/) (together with npm).
+
+Run `npm install -g @angular/cli to install` [Angular](https://angular.dev/) globally (-g) to make sure you don’t have to install it separately for every project
+
 ## Development server
 
 Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The application will automatically reload if you change any of the source files.
+
+Specify port if needed `--port 4201` (default 4200)
 
 ## Code scaffolding
 
@@ -17,6 +25,8 @@ Run `ng build` to build the project. The build artifacts will be stored in the `
 ## Running unit tests
 
 Run `ng test` to execute the unit tests via [Karma](https://karma-runner.github.io).
+
+Run `ng test --include="**/your-component-name.component.spec.ts"` to execute specified test file.
 
 ## Running end-to-end tests
 

@@ -1,0 +1,12 @@
+<div class="arbitrage-graph-wrapper">
+  <div id="graph"></div>
+
+  <button mat-flat-button (click)="toggleArbitrageGraph()">
+    @if (areEventsFiring) {
+    <mat-icon>stop</mat-icon>
+    } @else {
+    <mat-icon>play_arrow</mat-icon>
+    }
+    {{areEventsFiring ? 'Stop' : 'Start'}}
+  </button>
+</div>
