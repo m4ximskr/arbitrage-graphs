@@ -6,7 +6,7 @@ import {RangeFilterValue} from "./filters/range-filter/range-filter.component";
 import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
 
 interface FiltersForm {
-  cexes: FormControl<ChipFilterValue[]>;
+  exchanges: FormControl<ChipFilterValue[]>;
   chains: FormControl<ChipFilterValue[]>;
   symbols: FormControl<ChipFilterValue[]>;
   profit: FormControl<RangeFilterValue>;
@@ -28,7 +28,7 @@ export class AppComponent implements OnInit {
     private destroyRef: DestroyRef,
   ) {
     this.filtersForm = this.fb.group({
-      cexes: [],
+      exchanges: [],
       chains: [],
       symbols: [],
       profit: [],
@@ -50,7 +50,7 @@ export class AppComponent implements OnInit {
 
   private listenForFiltersFormChanges() {
     this.filtersForm.valueChanges.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(value => {
-      const cexes = value.cexes?.map(({name}): string => name)
+      const exchanges = value.exchanges?.map(({name}): string => name)
       const chains = value.chains?.map(({name}): string => name)
       const symbols = value.symbols?.map(({name}): string => name)
 
@@ -62,7 +62,7 @@ export class AppComponent implements OnInit {
 
       this.router.navigate([], {
         queryParams: {
-          cexes,
+          exchanges,
           chains,
           symbols,
           profit_from: profitFrom,
@@ -82,9 +82,9 @@ export class AppComponent implements OnInit {
 
     this.activatedRoute.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(params => {
       this.filtersForm.patchValue({
-        cexes: prepareArrayValues(params['cexes']).map(cex => ({name: cex})),
-        chains: prepareArrayValues(params['chains']).map(cex => ({name: cex})),
-        symbols: prepareArrayValues(params['symbols']).map(cex => ({name: cex})),
+        exchanges: prepareArrayValues(params['exchanges']).map(exchange => ({name: exchange})),
+        chains: prepareArrayValues(params['chains']).map(chain => ({name: chain})),
+        symbols: prepareArrayValues(params['symbols']).map(symbol => ({name: symbol})),
         profit: {
           from: params['profit_from'],
           to: params['profit_to'],

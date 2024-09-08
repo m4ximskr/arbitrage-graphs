@@ -1,6 +1,7 @@
 import {Injectable} from '@angular/core';
-import {ArbitrageGraphFilters, ArbitrageNodeData} from "./arbitrage-graph.model";
+import {ArbitrageData, ArbitrageGraphFilters, GraphNodeObject, NodeGroup, ParentData} from "./arbitrage-graph.model";
 import {Params} from "@angular/router";
+import {intersection} from "lodash";
 
 @Injectable({
   providedIn: 'root'
@@ -8,7 +9,7 @@ import {Params} from "@angular/router";
 export class ArbitrageGraphService {
 
   private graphFilters: ArbitrageGraphFilters = {
-    cexes: [],
+    exchanges: [],
     chains: [],
     symbols: [],
     profitFrom: undefined,
@@ -29,83 +30,84 @@ export class ArbitrageGraphService {
       return isNaN(parsedValue) ? undefined : parsedValue
     }
 
-    this.graphFilters.cexes = prepareArrayValues(params['cexes'] || [])
+    this.graphFilters.exchanges = prepareArrayValues(params['exchanges'] || [])
     this.graphFilters.chains = prepareArrayValues(params['chains'] || [])
     this.graphFilters.symbols = prepareArrayValues(params['symbols'] || [])
     this.graphFilters.profitFrom = prepareFloatValue(params['profit_from'])
     this.graphFilters.profitTo = prepareFloatValue(params['profit_to'])
+    this.graphFilters.amountFrom = prepareFloatValue(params['amount_from'])
+    this.graphFilters.amountTo = prepareFloatValue(params['amount_to'])
   }
 
-  filterArbitrageNodeData(arbNodeData: ArbitrageNodeData[]): boolean {
-    let includesCexes = false;
-    let includesChains = false;
-    let includesSymbols = false;
-    let includesArbNodeByProfit = false;
-    let includesArbNodeByAmount = false;
+  filterArbitrageNodeData(connectedArbNodes: GraphNodeObject<ArbitrageData>[], connectedParentNodes: GraphNodeObject<ParentData>[], node: GraphNodeObject): boolean {
+    const {exchanges, chains, symbols, profitFrom, profitTo, amountFrom, amountTo} = this.graphFilters;
+    const includesByName = (label: string, filterValues: string[]) =>
+      filterValues.some(filter => label.toLowerCase().includes(filter.toLowerCase()))
 
-    const {cexes, chains, symbols, profitFrom, profitTo, amountFrom, amountTo} = this.graphFilters
+    const includesByRange = (value: number, min: number, max: number) =>
+      (isNaN(min) || value >= min) && (isNaN(max) || value <= max);
 
-    arbNodeData.forEach((arbData) => {
-      if (cexes.length > 0) {
-        if (!includesCexes) {
-          includesCexes = cexes.some(cex => {
-            return arbData.pairs.map(pair => pair.cex).some(cexInArb => cexInArb.toLowerCase().includes(cex.toLowerCase()))
-          })
-        }
-      } else {
-        includesCexes = true
-      }
+    let includedExchangesArbIdsToCheck = new Set([]);
+    let includedChainsArbIdsToCheck = new Set([]);
+    let includedSymbolsArbIdsToCheck = new Set([]);
 
-      if (chains.length > 0) {
-        if (!includesChains) {
-          includesChains = chains.some(chain => {
-            return arbData.pairs.map(pair => pair.chain).some(chainInArb => chainInArb.toLowerCase().includes(chain.toLowerCase()))
-          })
-        }
-      } else {
-        includesChains = true
-      }
-
-      if (symbols.length > 0) {
-        if (!includesSymbols) {
-          includesSymbols = symbols.some(symbol => {
-            return arbData.pairs.map(pair => pair.symbol).some(symbolInArb => symbolInArb.toLowerCase().includes(symbol.toLowerCase()))
-          })
-        }
-      } else {
-        includesSymbols = true;
-      }
-
-      if (!isNaN(profitFrom) || !isNaN(profitTo)) {
-        if (!includesArbNodeByProfit) {
-          if (!isNaN(profitFrom) && isNaN(profitTo)) {
-            includesArbNodeByProfit = arbData.profit >= profitFrom
-          } else if (isNaN(profitFrom) && !isNaN(profitTo)) {
-            includesArbNodeByProfit = arbData.profit <= profitTo
-          } else {
-            includesArbNodeByProfit = arbData.profit >= profitFrom && arbData.profit <= profitTo
+    connectedParentNodes.forEach(connectedParentNode => {
+      if (connectedParentNode.group === NodeGroup.EXCHANGE) {
+        if (exchanges.length > 0) {
+          if (includesByName(connectedParentNode.label, exchanges)) {
+            includedExchangesArbIdsToCheck = new Set([...includedExchangesArbIdsToCheck, ...connectedParentNode.data.arbIds])
           }
         }
-      } else {
-        includesArbNodeByProfit = true;
       }
 
-      if (!isNaN(amountFrom) || !isNaN(amountTo)) {
-        if (!includesArbNodeByAmount) {
-          if (!isNaN(amountFrom) && isNaN(amountTo)) {
-            includesArbNodeByAmount = arbData.amount >= amountFrom
-          } else if (isNaN(amountFrom) && !isNaN(amountTo)) {
-            includesArbNodeByAmount = arbData.amount <= amountTo
-          } else {
-            includesArbNodeByAmount = arbData.amount >= amountFrom && arbData.amount <= amountTo
+      if (connectedParentNode.group === NodeGroup.CHAIN) {
+        if (chains.length > 0) {
+          if (includesByName(connectedParentNode.label, chains)) {
+            includedChainsArbIdsToCheck = new Set([...includedChainsArbIdsToCheck, ...connectedParentNode.data.arbIds])
           }
         }
-      } else {
-        includesArbNodeByAmount = true;
       }
 
+      if (connectedParentNode.group === NodeGroup.SYMBOL) {
+        if (symbols.length > 0) {
+          if (includesByName(connectedParentNode.label, symbols)) {
+            includedSymbolsArbIdsToCheck = new Set([...includedSymbolsArbIdsToCheck, ...connectedParentNode.data.arbIds])
+          }
+        }
+      }
     })
 
-    return includesCexes && includesChains && includesSymbols && includesArbNodeByProfit && includesArbNodeByAmount
+    const includesExchanges = exchanges.length === 0 || includedExchangesArbIdsToCheck.size > 0;
+    const includesChains = chains.length === 0 || includedChainsArbIdsToCheck.size > 0;
+    const includesSymbols = symbols.length === 0 || includedSymbolsArbIdsToCheck.size > 0;
+
+    const includedByProfitAndAmountArbIdsToCheck = connectedArbNodes.reduce((arbIds, connectedArbNode) => {
+      const {profit, amountIn} = connectedArbNode.data;
+
+      if (includesByRange(profit, profitFrom, profitTo) && includesByRange(amountIn, amountFrom, amountTo)) {
+        arbIds.add(connectedArbNode.id);
+      }
+
+      return arbIds;
+    }, new Set([]));
+
+    const includesArbNodeByProfitAndAmount = includedByProfitAndAmountArbIdsToCheck.size > 0;
+
+    const currentNodeArbIds = node.group === NodeGroup.ARBITRAGE ? [node.id] : [...node.data.arbIds]
+
+    const arbIdsIntersectionToCheck = [
+      [...includedExchangesArbIdsToCheck],
+      [...includedChainsArbIdsToCheck],
+      [...includedSymbolsArbIdsToCheck],
+      [...includedByProfitAndAmountArbIdsToCheck],
+      currentNodeArbIds
+    ].filter(arbIds => arbIds?.length > 0)
+
+    if (arbIdsIntersectionToCheck.length > 1) {
+      const arbIdsIntersections = intersection(...arbIdsIntersectionToCheck);
+      return arbIdsIntersections.length > 0 && includesExchanges && includesChains && includesSymbols && includesArbNodeByProfitAndAmount;
+    } else {
+      return includesExchanges && includesChains && includesSymbols && includesArbNodeByProfitAndAmount
+    }
   }
 }

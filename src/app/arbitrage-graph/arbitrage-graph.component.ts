@@ -5,16 +5,20 @@ import {
   Component,
   DestroyRef,
   ElementRef,
+  ViewChild,
 } from '@angular/core';
 
-import ForceGraph, {ForceGraphInstance, LinkObject} from 'force-graph';
-import {forceCenter, forceCollide, forceLink} from 'd3-force';
+import ForceGraph, {ForceGraphInstance} from 'force-graph';
+import {forceCenter, forceCollide, forceLink, forceX, forceY} from 'd3-force';
 import {ActivatedRoute} from "@angular/router";
 import {
+  ArbitrageData,
+  ArbitrageLocationType,
   ArbitrageNodeData,
-  ArbitragePair,
+  GraphLinkObject,
   GraphNodeObject,
   NodeGroup,
+  NodePositionsByGroup,
 } from "./arbitrage-graph.model";
 import {ArbitrageGraphService} from "./arbitrage-graph.service";
 import {generateRandomArbitrage} from "../data/mock-arbitrage-data";
@@ -27,18 +31,27 @@ import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ArbitrageGraphComponent implements AfterViewInit {
+  @ViewChild('graph', {static: true}) graphRef;
   areEventsFiring = false;
-
-  private dataSimulationInterval;
 
   private graph: ForceGraphInstance;
   private nodes: GraphNodeObject[] = []
-  private links: LinkObject[] = []
+  private links: GraphLinkObject[] = []
 
-  private nodesConnectionsMap = new Map<(string | number), Set<(string | number)>>()
   private nodesMap = new Map<(string | number), GraphNodeObject>()
+  private nodesConnectionsMap = new Map<(string | number), Set<(string | number)>>()
+  private linksMap = new Map<(string | number), GraphLinkObject[]>()
 
-  private nodeLifeTimeInMilliseconds = 10000;
+  private highlightNodeIds = new Set<string | number>();
+  private highlightLinkIds = new Set<string | number>();
+
+  private dataSimulationInterval;
+
+  private nodeLifeTimeInMilliseconds = 20000;
+
+  private nodePositionsByGroup: NodePositionsByGroup;
+
+  private NODE_R = 4;
 
   constructor(
     private elementRef: ElementRef,
@@ -49,6 +62,7 @@ export class ArbitrageGraphComponent implements AfterViewInit {
 ) {}
 
   ngAfterViewInit() {
+    this.prepareNodePositionsMap();
     this.initializeGraph();
     this.listenToFilterChanges();
   }
@@ -68,8 +82,8 @@ export class ArbitrageGraphComponent implements AfterViewInit {
     }, 1000);
   }
 
-  private handleNewArbitrage(data: ArbitrageNodeData) {
-    const { pairs, amount, profit } = data;
+  private handleNewArbitrage(data: ArbitrageData) {
+    const { direction, amountIn, profit, from, to, symbol } = data;
 
     let maxAbsProfit = Math.abs(profit);
 
@@ -83,50 +97,79 @@ export class ArbitrageGraphComponent implements AfterViewInit {
     const minNodeSize = 5;
     const maxNodeSize = 25;
 
-    let arbNodeSize = (Math.abs(profit) / maxAbsProfit) * maxNodeSize;
-    arbNodeSize = Math.max(arbNodeSize, minNodeSize);
-
-    const arbNode: GraphNodeObject<ArbitrageNodeData> = {
-      id: `arb-${Date.now()}`,
-      label: `
-        $${profit} <br>
-        ${pairs.map(p => p.symbol).join(' -> ')} <br>
-        ${amount} tokens <br>
-        ${pairs.map(p => p.chain).join(' -> ')} <br>
-         ${pairs.map(p => p.cex).join(' -> ')}
-      `,
-      group: NodeGroup.ARBITRAGE,
-      color: profit > 0 ? 'green' : 'red',
-      size: arbNodeSize,
-      data
-    };
-
     this.nodes.forEach(node => {
       if (node.group === NodeGroup.ARBITRAGE) {
-        const nodeSize = (Math.abs((node.data as ArbitrageNodeData).profit) / maxAbsProfit) * maxNodeSize;
+        const nodeSize = (Math.abs((node.data as ArbitrageData).profit) / maxAbsProfit) * maxNodeSize;
         node.size = Math.max(nodeSize, minNodeSize);
       }
     });
 
+    let arbNodeSize = (Math.abs(profit) / maxAbsProfit) * maxNodeSize;
+    arbNodeSize = Math.max(arbNodeSize, minNodeSize);
+
+    const arbNode: GraphNodeObject<ArbitrageData> = {
+      id: `arb-${Date.now()}`,
+      label: `
+        $${profit}<br>
+        from: ${from.name} ${from.type}<br>
+        to: ${to.name} ${to.type}<br>
+        amount: ${amountIn} ${symbol} <br><br>
+        ${direction}
+      `,
+      group: NodeGroup.ARBITRAGE,
+      color: profit > 0 ? 'green' : 'red',
+      size: arbNodeSize,
+      data,
+    };
+
     this.nodes.push(arbNode);
-    this.nodesConnectionsMap.set(arbNode.id, new Set([]))
     this.nodesMap.set(arbNode.id, arbNode)
 
-    pairs.forEach(pair => {
-      const cexNode = this.getParentNodeOrCreate(pair, NodeGroup.CEX, arbNode.id);
-      const chainNode = this.getParentNodeOrCreate(pair, NodeGroup.CHAIN, arbNode.id);
-      const symbolNode = this.getParentNodeOrCreate(pair, NodeGroup.SYMBOL, arbNode.id);
+    const fromNodeGroup = from.type === ArbitrageLocationType.EXCHANGE ? NodeGroup.EXCHANGE : NodeGroup.CHAIN
+    const toNodeGroup = to.type === ArbitrageLocationType.EXCHANGE ? NodeGroup.EXCHANGE : NodeGroup.CHAIN
 
-      const arbNodeConnections = this.nodesConnectionsMap.get(arbNode.id);
-      this.nodesConnectionsMap.set(arbNode.id, new Set([...arbNodeConnections, cexNode.id, chainNode.id, symbolNode.id]))
+    const fromNode = this.getParentNodeOrCreate(from.name, fromNodeGroup, arbNode.id);
+    const toNode = this.getParentNodeOrCreate(to.name, toNodeGroup, arbNode.id);
+    const symbolNode = this.getParentNodeOrCreate(symbol, NodeGroup.SYMBOL, arbNode.id);
 
-      this.links.push({ source: arbNode.id, target: cexNode.id });
-      this.links.push({ source: arbNode.id, target: chainNode.id });
-      this.links.push({ source: arbNode.id, target: symbolNode.id });
-    })
+    const arbNodeConnections = this.nodesConnectionsMap.get(arbNode.id) || new Set([]);
+    this.nodesConnectionsMap.set(arbNode.id, new Set([...arbNodeConnections, fromNode.id, toNode.id, symbolNode.id]))
+
+    const links = this.createLinks(arbNode, fromNode, toNode, symbolNode)
+
+    this.linksMap.set(arbNode.id,links)
 
     this.updateGraph();
     this.handleNodeLifetime(arbNode)
+  }
+
+  private createLinks(arbNode: GraphNodeObject, fromNode: GraphNodeObject, toNode: GraphNodeObject, symbolNode: GraphNodeObject): GraphLinkObject[] {
+    let linksColor = 'lightgrey';
+    if (fromNode.group === NodeGroup.EXCHANGE && toNode.group === NodeGroup.CHAIN) {
+      linksColor = 'blue';
+    }
+
+    if (fromNode.group === NodeGroup.CHAIN && toNode.group === NodeGroup.EXCHANGE) {
+      linksColor = 'red';
+    }
+
+    if (fromNode.group === NodeGroup.EXCHANGE && toNode.group === NodeGroup.EXCHANGE) {
+      linksColor = 'gold';
+    }
+
+    if (fromNode.group === NodeGroup.CHAIN && toNode.group === NodeGroup.CHAIN) {
+      linksColor = 'green';
+    }
+
+    const linkFrom: GraphLinkObject = { id: `link-0${Date.now()}`, source: fromNode, target: arbNode, color: linksColor}
+    const linkTo: GraphLinkObject = { id: `link-1${Date.now()}`, source: arbNode, target: toNode, color: linksColor}
+    const linkSymbol: GraphLinkObject = { id: `link-2${Date.now()}`, source: arbNode, target: symbolNode, color: 'lightgrey'}
+
+    this.links.push(linkFrom);
+    this.links.push(linkTo);
+    this.links.push(linkSymbol);
+
+    return [linkFrom, linkTo, linkSymbol]
   }
 
   private handleNodeLifetime(arbNode: GraphNodeObject) {
@@ -146,7 +189,7 @@ export class ArbitrageGraphComponent implements AfterViewInit {
         }
         return filteredNodes;
       }, []);
-      this.links = this.links.filter(link => (link.source as GraphNodeObject).id !== arbNode.id);
+      this.links = this.links.filter(link => link.source.group === NodeGroup.ARBITRAGE ? link.source.id !== arbNode.id : link.target.id !== arbNode.id);
       this.updateGraph();
     }, this.nodeLifeTimeInMilliseconds);
   }
@@ -155,85 +198,171 @@ export class ArbitrageGraphComponent implements AfterViewInit {
     this.graph.graphData({ nodes: this.nodes, links: this.links });
   }
 
-  private getParentNodeOrCreate(pair: ArbitragePair, group: NodeGroup, arbNodeId: string | number): GraphNodeObject {
-    let id, color: string;
+  private getParentNodeOrCreate(label: string, group: NodeGroup, arbId: string | number): GraphNodeObject {
+    const id = label;
+
+    let color: string;
 
     switch (group) {
-      case NodeGroup.CEX:
-        id = pair.cex;
+      case NodeGroup.EXCHANGE:
         color = 'gold';
         break;
       case NodeGroup.CHAIN:
-        id = pair.chain;
         color = 'pink';
         break;
       case NodeGroup.SYMBOL:
-        id = pair.symbol;
         color = 'lightblue';
         break;
     }
 
-    let node: GraphNodeObject = this.nodes.find(n => n.id === id);
+    let node = this.nodes.find(n => n.id === id);
 
     if (!node) {
       node = {
         id,
+        label,
         group,
         color,
-        label: id,
         size: 50,
+        isNew: true,
       };
       this.nodes.push(node);
-      this.nodesMap.set(node.id, node)
     }
 
+    node.data = {
+      arbIds: new Set([...node.data?.arbIds || [], arbId])
+    }
+
+    this.nodesMap.set(node.id, node)
+
     const nodeConnections = this.nodesConnectionsMap.get(node.id) || new Set([]);
-    this.nodesConnectionsMap.set(node.id, new Set([...nodeConnections, arbNodeId]))
+    this.nodesConnectionsMap.set(node.id, new Set([...nodeConnections, arbId]))
 
     return node;
   }
 
+  private prepareNodePositionsMap() {
+    setTimeout(() => {
+      const {width, height} = this.graphRef.nativeElement.querySelector('canvas');
+
+      this.nodePositionsByGroup = {
+        [NodeGroup.EXCHANGE]: {x: -width / 4, y: -height / 4},  // Top-left
+        [NodeGroup.CHAIN]: {x: width / 4, y: -height / 4},   // Top-right
+        [NodeGroup.SYMBOL]: {x: 0, y: height / 4},    // Bottom
+        [NodeGroup.ARBITRAGE]: {x: 0, y: 0}    // Center
+      };
+    }, 0)
+  }
+
   private initializeGraph() {
-    this.graph = ForceGraph()(this.elementRef.nativeElement.querySelector('#graph'))
+    this.graph = ForceGraph()(this.graphRef.nativeElement)
       .graphData({ nodes: this.nodes, links: this.links })
       .nodeLabel('label')
       .nodeColor((node: GraphNodeObject) => node.color || 'blue')
+      .nodeRelSize(this.NODE_R)
       .nodeVal((node: GraphNodeObject) => node.size)
       .nodeCanvasObjectMode(() => 'after')
-      .nodeCanvasObject((node: GraphNodeObject, ctx) => {
-        ctx.font = '8px Sans-Serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = 'black';
-
-        if (node.group === NodeGroup.ARBITRAGE) {
-          const profit = node.data.profit
-          if (profit > 0 && node.size > 20) {
-            ctx.fillText(`$${profit}`, node.x, node.y);
-          }
-        } else {
-          ctx.fillText(`${node.label}`, node.x, node.y);
-        }
-      })
+      .nodeCanvasObject((node: GraphNodeObject, ctx: CanvasRenderingContext2D) => this.createNodeCanvasObject(node, ctx))
+      .linkCanvasObjectMode(() => 'replace')
+      .linkCanvasObject((link: GraphLinkObject, ctx: CanvasRenderingContext2D) => this.createLinkCanvasObject(link, ctx))
       .nodeVisibility((node: GraphNodeObject) => this.checkVisibility(node))
-      .linkVisibility((link: LinkObject) => this.checkVisibility(link.source as GraphNodeObject))
-      .d3Force('collide', forceCollide().radius((r) => Math.max(r.size / 2 + 5, 25)))
+      .linkVisibility((link: GraphLinkObject) => this.checkVisibility(link.source.group === NodeGroup.ARBITRAGE ? link.source : link.target))
+      .d3Force('collide', forceCollide()
+        .radius((node: GraphNodeObject) => Math.sqrt(node.size) * this.NODE_R + (node.group === NodeGroup.ARBITRAGE ? 30 : 10))
+        .strength(0.1)
+        .iterations(100)
+      )
       .d3Force('center', forceCenter().strength(1))
-      .d3Force('link', forceLink().strength((link) => 0.1).distance(() => 300))
+      .d3Force('link', forceLink().strength(0).distance(300))
+      .linkWidth((link: GraphLinkObject) => this.highlightLinkIds.has(link.id) ? 5 : 1)
+      .linkDirectionalArrowLength((link: GraphLinkObject) => link.target.group !== NodeGroup.SYMBOL ? 15 : 0)
+      .linkDirectionalArrowRelPos(1)
+      .linkDirectionalParticles(5)
+      .linkDirectionalParticleWidth((link: GraphLinkObject) => link.target.group !== NodeGroup.SYMBOL && this.highlightLinkIds.has(link.id) ? 10 : 0)
+      .onNodeHover((node: GraphNodeObject) => this.handleNodeHover(node))
+      .d3Force('x', forceX(node => this.nodePositionsByGroup[node.group].x).strength(0.1))
+      .d3Force('y', forceY(node => this.nodePositionsByGroup[node.group].y).strength(0.1))
+      .zoom(0.999, 100)
   }
 
-  private checkVisibility(node: GraphNodeObject) {
-    let arbNodeData;
-    if (node.group !== NodeGroup.ARBITRAGE) {
-      const connections = this.nodesConnectionsMap.get(node.id)
-      const nodesIds = [...this.nodesConnectionsMap.keys()];
-      const filteredNodesIds = nodesIds.filter(nodeId => [...connections].includes(nodeId))
-      arbNodeData = filteredNodesIds.flatMap((nodeId) => this.nodesMap.get(nodeId).data)
+  private createNodeCanvasObject(node: GraphNodeObject, ctx: CanvasRenderingContext2D) {
+    ctx.font = '8px Sans-Serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'black';
+
+    if (node.group === NodeGroup.ARBITRAGE) {
+      const profit = node.data.profit
+      if (profit > 0 && node.size > 20) {
+        ctx.fillText(`$${profit}`, node.x, node.y);
+      }
     } else {
-      arbNodeData = [node.data]
+      ctx.fillText(`${node.label}`, node.x, node.y);
     }
 
-    return this.arbitrageGraphService.filterArbitrageNodeData(arbNodeData)
+    const radius = Math.sqrt(node.size) * this.NODE_R
+
+    if (this.highlightNodeIds.has(node.id)) {
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = 'black'
+      ctx.stroke();
+    } else if (this.highlightNodeIds.size > 0) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
+      ctx.fill();
+    }
+  }
+
+  private createLinkCanvasObject(link: GraphLinkObject, ctx: CanvasRenderingContext2D) {
+    if (this.highlightLinkIds.has(link.id)) {
+      ctx.lineWidth = 5;
+      ctx.globalAlpha = 1;
+    } else if (this.highlightLinkIds.size > 0) {
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.4;
+    } else {
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.strokeStyle = link.color;
+    ctx.beginPath();
+    ctx.moveTo(link.source.x, link.source.y);
+    ctx.lineTo(link.target.x, link.target.y);
+    ctx.stroke();
+  }
+
+  private handleNodeHover(node: GraphNodeObject) {
+    this.highlightNodeIds.clear();
+    this.highlightLinkIds.clear();
+
+    if (node?.group === NodeGroup.ARBITRAGE) {
+      const nodeIds = [...this.nodesConnectionsMap.get(node.id), node.id]
+      nodeIds.forEach(nodeId => this.highlightNodeIds.add(nodeId))
+      const links = this.linksMap.get(node.id)
+      links.forEach(link => this.highlightLinkIds.add(link.id));
+    }
+  }
+
+  private checkVisibility(node: GraphNodeObject): boolean {
+    let connectedArbNodes: GraphNodeObject[];
+    let connectedParentNodes: GraphNodeObject[];
+
+    if (node.group !== NodeGroup.ARBITRAGE) {
+      const connectedArbIds = this.nodesConnectionsMap.get(node.id)
+      connectedArbNodes = [...connectedArbIds].map(connectedArbId => this.nodesMap.get(connectedArbId))
+
+      const connectedParentNodeIds = new Set([...connectedArbIds].flatMap(connectedArbId => [...this.nodesConnectionsMap.get(connectedArbId)]))
+      connectedParentNodes = [...connectedParentNodeIds].map(connectedParentNodeId => this.nodesMap.get(connectedParentNodeId))
+    } else {
+      connectedArbNodes = [node]
+      const connectedParentNodeIds = this.nodesConnectionsMap.get(node.id)
+      connectedParentNodes = [...connectedParentNodeIds].map(connectedParentNodeId => this.nodesMap.get(connectedParentNodeId))
+    }
+    return this.arbitrageGraphService.filterArbitrageNodeData(connectedArbNodes, connectedParentNodes, node)
   }
 
   private listenToFilterChanges() {

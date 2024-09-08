@@ -1,33 +1,119 @@
-import {ArbitrageNodeData} from "../arbitrage-graph/arbitrage-graph.model";
+import {
+  ArbitrageData,
+  ArbitrageLocation,
+  ArbitrageLocationType,
+} from "../arbitrage-graph/arbitrage-graph.model";
 
-export function generateRandomArbitrage(): ArbitrageNodeData {
-  const cexes = ['Binance', 'Kraken', 'Coinbase', 'Bitfinex', 'Huobi'];
+export function generateRandomArbitrage(): ArbitrageData {
+  const exchanges = ['Binance', 'Kraken', 'Coinbase', 'Bitfinex', 'Huobi'];
   const chains = ['Ethereum', 'BSC', 'Polygon', 'Solana', 'Avalanche'];
-  const tickers = ['BTC', 'USDT', 'ETH', 'DOGE', 'CRV', 'TRX'];
+  const symbols = ['BTC', 'USDT', 'ETH', 'DOGE', 'CRV', 'TRX'];
   const randomElementFromArrayFn = (array) => array[Math.floor(Math.random() * array.length)];
 
-  let currentTicker = randomElementFromArrayFn(tickers);
-  const pairs = [];
-  const length = Math.floor(Math.random() * 3) + 3;
+  const getRandomArbitrageLocation = (): ArbitrageLocation => {
+    const isChain = Math.random() > 0.5;
 
-  for (let i = 0; i < length; i++) {
-    const nextTicker = randomElementFromArrayFn(tickers.filter(element => element !== currentTicker));
-
-    pairs.push({
-      symbol: `${currentTicker}/${nextTicker}`,
-      cex: randomElementFromArrayFn(cexes),
-      chain: randomElementFromArrayFn(chains)
-    });
-
-    currentTicker = nextTicker;
+    return {
+      name: isChain ? randomElementFromArrayFn(chains) : randomElementFromArrayFn(exchanges),
+      type: isChain ? ArbitrageLocationType.CHAIN : ArbitrageLocationType.EXCHANGE,
+    }
   }
 
-  const amount = Math.floor(Math.random() * 100) + 5
-  const profit =  ((Math.random() * (10000)) + -5000).toFixed(2);
-
   return {
-    pairs,
-    amount,
-    profit: parseFloat(profit),
-  };
+    direction: `${randomElementFromArrayFn(exchanges)} -> ${randomElementFromArrayFn(exchanges)}`,
+    from: getRandomArbitrageLocation(),
+    to: getRandomArbitrageLocation(),
+    symbol: randomElementFromArrayFn(symbols),
+    amountIn: Math.floor(Math.random() * 100) + 5,
+    profit: parseFloat(((Math.random() * (10000)) + -5000).toFixed(2)),
+  }
+}
+
+export function generateMultipleArbitrage(): ArbitrageData[] {
+  return [
+    {
+      direction: `loh 1`,
+      from: {
+        name: 'Coinbase',
+        type: ArbitrageLocationType.EXCHANGE,
+      },
+      to: {
+        name: 'Coinbase',
+        type: ArbitrageLocationType.EXCHANGE,
+      },
+      symbol: 'USDT',
+      amountIn: 10,
+      profit: 2000,
+    },
+    {
+      direction: `loh 2`,
+      from: {
+        name: 'Coinbase',
+        type: ArbitrageLocationType.EXCHANGE,
+      },
+      to: {
+        name: 'Kraken',
+        type: ArbitrageLocationType.EXCHANGE,
+      },
+      symbol: 'TRX',
+      amountIn: 10,
+      profit: 1000,
+    },
+    {
+      direction: `loh 3`,
+      from: {
+        name: 'Coinbase',
+        type: ArbitrageLocationType.EXCHANGE,
+      },
+      to: {
+        name: 'Ethereum',
+        type: ArbitrageLocationType.CHAIN,
+      },
+      symbol: 'TRX',
+      amountIn: 10,
+      profit: 1300,
+    },
+    {
+      direction: `loh 4`,
+      from: {
+        name: 'Solana',
+        type: ArbitrageLocationType.CHAIN,
+      },
+      to: {
+        name: 'Kraken',
+        type: ArbitrageLocationType.EXCHANGE,
+      },
+      symbol: 'TRX',
+      amountIn: 10,
+      profit: -1000,
+    },
+    {
+      direction: `loh 5`,
+      from: {
+        name: 'Huobi',
+        type: ArbitrageLocationType.EXCHANGE,
+      },
+      to: {
+        name: 'Kraken',
+        type: ArbitrageLocationType.EXCHANGE,
+      },
+      symbol: 'ETH',
+      amountIn: 10,
+      profit: 4000,
+    },
+    {
+      direction: `loh 6`,
+      from: {
+        name: 'Solana',
+        type: ArbitrageLocationType.CHAIN,
+      },
+      to: {
+        name: 'Binance',
+        type: ArbitrageLocationType.EXCHANGE,
+      },
+      symbol: 'DOGE',
+      amountIn: 35,
+      profit: 2000,
+    }
+  ]
 }

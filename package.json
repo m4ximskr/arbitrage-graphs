@@ -22,6 +22,7 @@
     "@angular/router": "^18.2.0",
     "d3-force": "^3.0.0",
     "force-graph": "^1.43.5",
+    "lodash": "^4.17.21",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
     "zone.js": "~0.14.10"

@@ -1,8 +1,8 @@
-import {NodeObject} from "force-graph";
+import {LinkObject, NodeObject} from "force-graph";
 
 export enum NodeGroup {
   ARBITRAGE = 'arbitrage',
-  CEX = 'cex',
+  EXCHANGE = 'exchange',
   CHAIN = 'chain',
   SYMBOL = 'symbol',
 }
@@ -12,7 +12,15 @@ export interface GraphNodeObject<D = any> extends NodeObject {
   color: string;
   label: string;
   size: number;
-  data?: D
+  data?: D;
+  isNew?: boolean;
+}
+
+export interface GraphLinkObject<D = any> extends LinkObject {
+  id: string;
+  source: GraphNodeObject<D>;
+  target: GraphNodeObject<D>;
+  color: string;
 }
 
 export interface ArbitragePair {
@@ -27,12 +35,39 @@ export interface ArbitrageNodeData {
   pairs: ArbitragePair[];
 }
 
+export enum ArbitrageLocationType {
+  EXCHANGE = 'exchange',
+  CHAIN = 'chain',
+}
+
+export interface ArbitrageLocation {
+  name: string;
+  type: ArbitrageLocationType
+}
+
+export interface ArbitrageData {
+  direction: string;
+  from: ArbitrageLocation
+  to: ArbitrageLocation
+  symbol: string,
+  amountIn: number;
+  profit: number;
+}
+
+export interface ParentData {
+  arbIds: Set<string | number>;
+}
+
 export interface ArbitrageGraphFilters {
-  cexes: string[];
+  exchanges: string[];
   chains: string[];
   symbols: string[];
   profitFrom: number;
   profitTo: number;
   amountFrom: number;
   amountTo: number;
+}
+
+export type NodePositionsByGroup = {
+  [key in NodeGroup]: {x: number, y: number};
 }
