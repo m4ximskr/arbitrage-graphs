@@ -18,7 +18,7 @@ import {
   GraphLinkObject,
   GraphNodeObject,
   NodeGroup,
-  NodePositionsByGroup,
+  NodePositionsByGroup, ParentData,
 } from "./arbitrage-graph.model";
 import {ArbitrageGraphService} from "./arbitrage-graph.service";
 import {generateRandomArbitrage} from "../data/mock-arbitrage-data";
@@ -47,14 +47,14 @@ export class ArbitrageGraphComponent implements AfterViewInit {
   private highlightNodeIds = new Set<string | number>();
   private highlightLinkIds = new Set<string | number>();
 
-  private dataSimulationInterval;
+  private randomDataSimulationInterval;
   private mockArbitrageDataEventsSubscription: Subscription;
 
   private nodePositionsByGroup: NodePositionsByGroup;
 
   private NODE_R = 4;
 
-  private nodeLifeTime = 10000;
+  private nodeLifeTime = 20000;
   private flickerInterval = 1000;
   private nodesFlickerStartTimes = new Map<string | number, number>();
 
@@ -64,9 +64,7 @@ export class ArbitrageGraphComponent implements AfterViewInit {
   private preparedCanvasHeight: number;
 
   constructor(
-    private elementRef: ElementRef,
     private activatedRoute: ActivatedRoute,
-    private cdr: ChangeDetectorRef,
     private arbitrageGraphService: ArbitrageGraphService,
     private destroyRef: DestroyRef,
     private arbitrageDataService: ArbitrageDataService,
@@ -81,17 +79,22 @@ export class ArbitrageGraphComponent implements AfterViewInit {
   toggleArbitrageGraph() {
     this.areEventsFiring = !this.areEventsFiring;
     if (this.areEventsFiring) {
-      // this.startDataSimulation();
-      this.mockArbitrageDataEventsSubscription = this.arbitrageDataService.listenForMockArbitrageDataEvents().subscribe(data => {
-        this.handleNewArbitrage(data);
-      })
+      // this.startRandomDataSimulation();
+      this.listenForMockArbitrageDataEvents();
     } else {
-      // clearInterval(this.dataSimulationInterval)
+      // clearInterval(this.randomDataSimulationInterval)
       this.mockArbitrageDataEventsSubscription.unsubscribe();
     }
   }
-  private startDataSimulation() {
-    this.dataSimulationInterval = setInterval(() => {
+
+  private listenForMockArbitrageDataEvents() {
+    this.mockArbitrageDataEventsSubscription = this.arbitrageDataService.listenForMockArbitrageDataEvents().subscribe(data => {
+      this.handleNewArbitrage(data);
+    })
+  }
+
+  private startRandomDataSimulation() {
+    this.randomDataSimulationInterval = setInterval(() => {
       const data = generateRandomArbitrage();
       this.handleNewArbitrage(data);
     }, 1000);
@@ -117,11 +120,6 @@ export class ArbitrageGraphComponent implements AfterViewInit {
       if (node.group === NodeGroup.ARBITRAGE) {
         const nodeSize = (Math.abs((node.data as ArbitrageData).profit) / maxAbsProfit) * maxNodeSize;
         node.size = Math.max(nodeSize, minNodeSize);
-      }
-
-      if (node.group === NodeGroup.ARBITRAGE) {
-        node.fx = node.x;
-        node.fy = node.y;
       }
     });
 
@@ -172,35 +170,6 @@ export class ArbitrageGraphComponent implements AfterViewInit {
     this.handleNodeLifetime(arbNode)
   }
 
-  private createLinks(arbNode: GraphNodeObject, fromNode: GraphNodeObject, toNode: GraphNodeObject, symbolNode: GraphNodeObject): GraphLinkObject[] {
-    let linksColor = 'lightgrey';
-    if (fromNode.group === NodeGroup.EXCHANGE && toNode.group === NodeGroup.CHAIN) {
-      linksColor = 'blue';
-    }
-
-    if (fromNode.group === NodeGroup.CHAIN && toNode.group === NodeGroup.EXCHANGE) {
-      linksColor = 'red';
-    }
-
-    if (fromNode.group === NodeGroup.EXCHANGE && toNode.group === NodeGroup.EXCHANGE) {
-      linksColor = 'gold';
-    }
-
-    if (fromNode.group === NodeGroup.CHAIN && toNode.group === NodeGroup.CHAIN) {
-      linksColor = 'green';
-    }
-
-    const linkFrom: GraphLinkObject = { id: `link-0${Date.now()}`, source: fromNode, target: arbNode, color: linksColor}
-    const linkTo: GraphLinkObject = { id: `link-1${Date.now()}`, source: arbNode, target: toNode, color: linksColor}
-    const linkSymbol: GraphLinkObject = { id: `link-2${Date.now()}`, source: arbNode, target: symbolNode, color: 'lightgrey'}
-
-    this.links.push(linkFrom);
-    this.links.push(linkTo);
-    this.links.push(linkSymbol);
-
-    return [linkFrom, linkTo, linkSymbol]
-  }
-
   private handleNodeFlickering(arbNode: GraphNodeObject) {
     setTimeout(() => {
       this.nodesFlickerStartTimes.set(arbNode.id, Date.now());
@@ -213,6 +182,9 @@ export class ArbitrageGraphComponent implements AfterViewInit {
         if (node.group === NodeGroup.ARBITRAGE) {
           if (node.id !== arbNode.id) {
             filteredNodes.push(node);
+          } else {
+            this.nodesMap.delete(node.id)
+            this.nodesConnectionsMap.delete(node.id)
           }
         } else {
           const connections = [...this.nodesConnectionsMap.get(node.id)]
@@ -220,10 +192,24 @@ export class ArbitrageGraphComponent implements AfterViewInit {
 
           if (filteredConnections.length > 0) {
             filteredNodes.push(node)
+
+            this.nodesConnectionsMap.set(node.id, new Set(filteredConnections))
+            const nodeWithFilteredArbs: GraphNodeObject<ParentData> = {
+              ... this.nodesMap.get(node.id),
+              data: {
+                arbIds: new Set(filteredConnections)
+              }
+            }
+            this.nodesMap.set(node.id, nodeWithFilteredArbs)
           }
 
-          if (node.group === NodeGroup.SYMBOL && filteredConnections.length === 0) {
-            this.symbolNodes.delete(node.id)
+          if (filteredConnections.length === 0) {
+            this.nodesMap.delete(node.id)
+            this.nodesConnectionsMap.delete(node.id)
+
+            if (node.group === NodeGroup.SYMBOL) {
+              this.symbolNodes.delete(node.id)
+            }
           }
 
           this.nodesConnectionsMap.set(node.id, new Set(filteredConnections))
@@ -283,6 +269,35 @@ export class ArbitrageGraphComponent implements AfterViewInit {
     return node;
   }
 
+  private createLinks(arbNode: GraphNodeObject, fromNode: GraphNodeObject, toNode: GraphNodeObject, symbolNode: GraphNodeObject): GraphLinkObject[] {
+    let linksColor = 'lightgrey';
+    if (fromNode.group === NodeGroup.EXCHANGE && toNode.group === NodeGroup.CHAIN) {
+      linksColor = 'blue';
+    }
+
+    if (fromNode.group === NodeGroup.CHAIN && toNode.group === NodeGroup.EXCHANGE) {
+      linksColor = 'red';
+    }
+
+    if (fromNode.group === NodeGroup.EXCHANGE && toNode.group === NodeGroup.EXCHANGE) {
+      linksColor = 'gold';
+    }
+
+    if (fromNode.group === NodeGroup.CHAIN && toNode.group === NodeGroup.CHAIN) {
+      linksColor = 'green';
+    }
+
+    const linkFrom: GraphLinkObject = { id: `link-0${Date.now()}`, source: fromNode, target: arbNode, color: linksColor}
+    const linkTo: GraphLinkObject = { id: `link-1${Date.now()}`, source: arbNode, target: toNode, color: linksColor}
+    const linkSymbol: GraphLinkObject = { id: `link-2${Date.now()}`, source: arbNode, target: symbolNode, color: 'lightgrey'}
+
+    this.links.push(linkFrom);
+    this.links.push(linkTo);
+    this.links.push(linkSymbol);
+
+    return [linkFrom, linkTo, linkSymbol]
+  }
+
   private prepareNodePositionsMap() {
     setTimeout(() => {
       const canvas = this.graphRef.nativeElement.querySelector('canvas');
@@ -337,8 +352,10 @@ export class ArbitrageGraphComponent implements AfterViewInit {
               return 0;
             }
             const index = [...this.symbolNodes].indexOf(node.id)
-            const spreadRange = Math.min(2 * this.preparedCanvasWidth / 2, this.symbolNodes.size * 50)
-            return index / (this.symbolNodes.size - 1) * 2 * spreadRange - spreadRange
+            const margin = this.preparedCanvasWidth / 10;
+            const availableWidth = this.preparedCanvasWidth - margin * 2;
+            const spreadRange = Math.min(availableWidth, this.symbolNodes.size * 70);
+            return ((index / (this.symbolNodes.size - 1)) * 2 - 1) * (spreadRange / 2);
           } else {
             return this.nodePositionsByGroup[node.group].x;
           }
@@ -349,6 +366,14 @@ export class ArbitrageGraphComponent implements AfterViewInit {
       .d3Force('center', null)
       .zoom(0.9)
       .autoPauseRedraw(false)
+      .cooldownTicks(100).onEngineStop(() => {
+        this.nodes.forEach(node => {
+          if (node.group === NodeGroup.ARBITRAGE) {
+            node.fx = node.x;
+            node.fy = node.y;
+          }
+        });
+    })
   }
 
   private createNodeCanvasObject(node: GraphNodeObject, ctx: CanvasRenderingContext2D) {
