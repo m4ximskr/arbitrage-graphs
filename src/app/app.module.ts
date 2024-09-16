@@ -14,6 +14,7 @@ import { RangeFilterComponent } from './filters/range-filter/range-filter.compon
 import {MatInputModule} from "@angular/material/input";
 import {MatButtonModule} from "@angular/material/button";
 import {MatExpansionModule} from "@angular/material/expansion";
+import {provideHttpClient} from "@angular/common/http";
 
 @NgModule({
   declarations: [
@@ -29,9 +30,11 @@ import {MatExpansionModule} from "@angular/material/expansion";
     MatFormFieldModule, MatChipsModule, MatIconModule, ReactiveFormsModule,
     MatInputModule, FormsModule,
     MatButtonModule,
-    MatExpansionModule
+    MatExpansionModule,
   ],
-  providers: [],
+  providers: [
+    provideHttpClient()
+  ],
   bootstrap: [AppComponent]
 })
 export class AppModule { }

@@ -7,7 +7,7 @@ import {
 export function generateRandomArbitrage(): ArbitrageData {
   const exchanges = ['Binance', 'Kraken', 'Coinbase', 'Bitfinex', 'Huobi'];
   const chains = ['Ethereum', 'BSC', 'Polygon', 'Solana', 'Avalanche'];
-  const symbols = ['BTC', 'USDT', 'ETH', 'DOGE', 'CRV', 'TRX'];
+  const symbols = ['BTC', 'USDT', 'ETH', 'DOGE', 'CRV', 'TRX', 'PENDLE', 'LTC', 'ETC', 'BCH', 'XRP', 'TON', 'ADA', 'AVAX', 'SHIB', 'LINK', 'DOT'];
   const randomElementFromArrayFn = (array) => array[Math.floor(Math.random() * array.length)];
 
   const getRandomArbitrageLocation = (): ArbitrageLocation => {

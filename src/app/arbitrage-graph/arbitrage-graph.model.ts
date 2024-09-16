@@ -13,7 +13,7 @@ export interface GraphNodeObject<D = any> extends NodeObject {
   label: string;
   size: number;
   data?: D;
-  isNew?: boolean;
+  createdAt?: number;
 }
 
 export interface GraphLinkObject<D = any> extends LinkObject {

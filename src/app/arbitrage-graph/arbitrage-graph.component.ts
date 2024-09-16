@@ -9,7 +9,7 @@ import {
 } from '@angular/core';
 
 import ForceGraph, {ForceGraphInstance} from 'force-graph';
-import {forceCenter, forceCollide, forceLink, forceX, forceY} from 'd3-force';
+import {forceCollide, forceLink, forceX, forceY} from 'd3-force';
 import {ActivatedRoute} from "@angular/router";
 import {
   ArbitrageData,
@@ -23,6 +23,8 @@ import {
 import {ArbitrageGraphService} from "./arbitrage-graph.service";
 import {generateRandomArbitrage} from "../data/mock-arbitrage-data";
 import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
+import {ArbitrageDataService} from "../data/arbitrage-data.service";
+import {Subscription} from "rxjs";
 
 @Component({
   selector: 'app-arbitrage-graph',
@@ -46,12 +48,20 @@ export class ArbitrageGraphComponent implements AfterViewInit {
   private highlightLinkIds = new Set<string | number>();
 
   private dataSimulationInterval;
-
-  private nodeLifeTimeInMilliseconds = 20000;
+  private mockArbitrageDataEventsSubscription: Subscription;
 
   private nodePositionsByGroup: NodePositionsByGroup;
 
   private NODE_R = 4;
+
+  private nodeLifeTime = 10000;
+  private flickerInterval = 1000;
+  private nodesFlickerStartTimes = new Map<string | number, number>();
+
+  private symbolNodes = new Set<string | number>()
+
+  private preparedCanvasWidth: number;
+  private preparedCanvasHeight: number;
 
   constructor(
     private elementRef: ElementRef,
@@ -59,6 +69,7 @@ export class ArbitrageGraphComponent implements AfterViewInit {
     private cdr: ChangeDetectorRef,
     private arbitrageGraphService: ArbitrageGraphService,
     private destroyRef: DestroyRef,
+    private arbitrageDataService: ArbitrageDataService,
 ) {}
 
   ngAfterViewInit() {
@@ -70,9 +81,13 @@ export class ArbitrageGraphComponent implements AfterViewInit {
   toggleArbitrageGraph() {
     this.areEventsFiring = !this.areEventsFiring;
     if (this.areEventsFiring) {
-      this.startDataSimulation()
+      // this.startDataSimulation();
+      this.mockArbitrageDataEventsSubscription = this.arbitrageDataService.listenForMockArbitrageDataEvents().subscribe(data => {
+        this.handleNewArbitrage(data);
+      })
     } else {
-      clearInterval(this.dataSimulationInterval)
+      // clearInterval(this.dataSimulationInterval)
+      this.mockArbitrageDataEventsSubscription.unsubscribe();
     }
   }
   private startDataSimulation() {
@@ -83,6 +98,7 @@ export class ArbitrageGraphComponent implements AfterViewInit {
   }
 
   private handleNewArbitrage(data: ArbitrageData) {
+
     const { direction, amountIn, profit, from, to, symbol } = data;
 
     let maxAbsProfit = Math.abs(profit);
@@ -102,13 +118,20 @@ export class ArbitrageGraphComponent implements AfterViewInit {
         const nodeSize = (Math.abs((node.data as ArbitrageData).profit) / maxAbsProfit) * maxNodeSize;
         node.size = Math.max(nodeSize, minNodeSize);
       }
+
+      if (node.group === NodeGroup.ARBITRAGE) {
+        node.fx = node.x;
+        node.fy = node.y;
+      }
     });
 
     let arbNodeSize = (Math.abs(profit) / maxAbsProfit) * maxNodeSize;
     arbNodeSize = Math.max(arbNodeSize, minNodeSize);
 
+    const currentTimestamp = Date.now()
+
     const arbNode: GraphNodeObject<ArbitrageData> = {
-      id: `arb-${Date.now()}`,
+      id: `arb-${currentTimestamp}`,
       label: `
         $${profit}<br>
         from: ${from.name} ${from.type}<br>
@@ -120,7 +143,9 @@ export class ArbitrageGraphComponent implements AfterViewInit {
       color: profit > 0 ? 'green' : 'red',
       size: arbNodeSize,
       data,
+      createdAt: currentTimestamp,
     };
+
 
     this.nodes.push(arbNode);
     this.nodesMap.set(arbNode.id, arbNode)
@@ -132,6 +157,8 @@ export class ArbitrageGraphComponent implements AfterViewInit {
     const toNode = this.getParentNodeOrCreate(to.name, toNodeGroup, arbNode.id);
     const symbolNode = this.getParentNodeOrCreate(symbol, NodeGroup.SYMBOL, arbNode.id);
 
+    this.symbolNodes.add(symbolNode.id);
+
     const arbNodeConnections = this.nodesConnectionsMap.get(arbNode.id) || new Set([]);
     this.nodesConnectionsMap.set(arbNode.id, new Set([...arbNodeConnections, fromNode.id, toNode.id, symbolNode.id]))
 
@@ -140,6 +167,8 @@ export class ArbitrageGraphComponent implements AfterViewInit {
     this.linksMap.set(arbNode.id,links)
 
     this.updateGraph();
+
+    this.handleNodeFlickering(arbNode)
     this.handleNodeLifetime(arbNode)
   }
 
@@ -172,6 +201,12 @@ export class ArbitrageGraphComponent implements AfterViewInit {
     return [linkFrom, linkTo, linkSymbol]
   }
 
+  private handleNodeFlickering(arbNode: GraphNodeObject) {
+    setTimeout(() => {
+      this.nodesFlickerStartTimes.set(arbNode.id, Date.now());
+    }, this.nodeLifeTime - this.flickerInterval * 3)
+  }
+
   private handleNodeLifetime(arbNode: GraphNodeObject) {
     setTimeout(() => {
       this.nodes = this.nodes.reduce((filteredNodes, node) => {
@@ -182,16 +217,24 @@ export class ArbitrageGraphComponent implements AfterViewInit {
         } else {
           const connections = [...this.nodesConnectionsMap.get(node.id)]
           const filteredConnections = connections.filter(arbNodeId => arbNodeId !== arbNode.id)
+
           if (filteredConnections.length > 0) {
             filteredNodes.push(node)
           }
+
+          if (node.group === NodeGroup.SYMBOL && filteredConnections.length === 0) {
+            this.symbolNodes.delete(node.id)
+          }
+
           this.nodesConnectionsMap.set(node.id, new Set(filteredConnections))
         }
         return filteredNodes;
       }, []);
       this.links = this.links.filter(link => link.source.group === NodeGroup.ARBITRAGE ? link.source.id !== arbNode.id : link.target.id !== arbNode.id);
+
       this.updateGraph();
-    }, this.nodeLifeTimeInMilliseconds);
+      this.nodesFlickerStartTimes.delete(arbNode.id)
+    }, this.nodeLifeTime);
   }
 
   private updateGraph() {
@@ -199,7 +242,7 @@ export class ArbitrageGraphComponent implements AfterViewInit {
   }
 
   private getParentNodeOrCreate(label: string, group: NodeGroup, arbId: string | number): GraphNodeObject {
-    const id = label;
+    const id = `${label}-${group}`;
 
     let color: string;
 
@@ -224,7 +267,6 @@ export class ArbitrageGraphComponent implements AfterViewInit {
         group,
         color,
         size: 50,
-        isNew: true,
       };
       this.nodes.push(node);
     }
@@ -243,19 +285,26 @@ export class ArbitrageGraphComponent implements AfterViewInit {
 
   private prepareNodePositionsMap() {
     setTimeout(() => {
-      const {width, height} = this.graphRef.nativeElement.querySelector('canvas');
+      const canvas = this.graphRef.nativeElement.querySelector('canvas');
+
+      const {width, height} = canvas
+
+      this.preparedCanvasWidth = width / window.devicePixelRatio
+      this.preparedCanvasHeight = height / window.devicePixelRatio
 
       this.nodePositionsByGroup = {
-        [NodeGroup.EXCHANGE]: {x: -width / 4, y: -height / 4},  // Top-left
-        [NodeGroup.CHAIN]: {x: width / 4, y: -height / 4},   // Top-right
-        [NodeGroup.SYMBOL]: {x: 0, y: height / 4},    // Bottom
-        [NodeGroup.ARBITRAGE]: {x: 0, y: 0}    // Center
+        [NodeGroup.EXCHANGE]: {x: -(this.preparedCanvasWidth / 2 - 100), y: -(this.preparedCanvasHeight / 2 - 100)},  // Top-left
+        [NodeGroup.CHAIN]: {x: this.preparedCanvasWidth / 2 - 100, y: -(this.preparedCanvasHeight / 2 - 100)},   // Top-right
+        [NodeGroup.SYMBOL]: {x: 0, y: this.preparedCanvasHeight / 2 - 50},    // Bottom
+        [NodeGroup.ARBITRAGE]: {x: 0, y: -100}    // Center
       };
     }, 0)
   }
 
   private initializeGraph() {
     this.graph = ForceGraph()(this.graphRef.nativeElement)
+
+    this.graph
       .graphData({ nodes: this.nodes, links: this.links })
       .nodeLabel('label')
       .nodeColor((node: GraphNodeObject) => node.color || 'blue')
@@ -269,46 +318,105 @@ export class ArbitrageGraphComponent implements AfterViewInit {
       .linkVisibility((link: GraphLinkObject) => this.checkVisibility(link.source.group === NodeGroup.ARBITRAGE ? link.source : link.target))
       .d3Force('collide', forceCollide()
         .radius((node: GraphNodeObject) => Math.sqrt(node.size) * this.NODE_R + (node.group === NodeGroup.ARBITRAGE ? 30 : 10))
-        .strength(0.1)
+        .strength(1)
         .iterations(100)
       )
-      .d3Force('center', forceCenter().strength(1))
-      .d3Force('link', forceLink().strength(0).distance(300))
+      .d3Force('link', forceLink().strength(0).distance(1000))
       .linkWidth((link: GraphLinkObject) => this.highlightLinkIds.has(link.id) ? 5 : 1)
       .linkDirectionalArrowLength((link: GraphLinkObject) => link.target.group !== NodeGroup.SYMBOL ? 15 : 0)
       .linkDirectionalArrowRelPos(1)
       .linkDirectionalParticles(5)
       .linkDirectionalParticleWidth((link: GraphLinkObject) => link.target.group !== NodeGroup.SYMBOL && this.highlightLinkIds.has(link.id) ? 10 : 0)
       .onNodeHover((node: GraphNodeObject) => this.handleNodeHover(node))
-      .d3Force('x', forceX(node => this.nodePositionsByGroup[node.group].x).strength(0.1))
+      .d3Force('x', forceX(node => {
+        /**
+         * Spreading SYMBOL nodes by x-axis
+         */
+          if (node.group === NodeGroup.SYMBOL) {
+            if (this.symbolNodes.size === 1) {
+              return 0;
+            }
+            const index = [...this.symbolNodes].indexOf(node.id)
+            const spreadRange = Math.min(2 * this.preparedCanvasWidth / 2, this.symbolNodes.size * 50)
+            return index / (this.symbolNodes.size - 1) * 2 * spreadRange - spreadRange
+          } else {
+            return this.nodePositionsByGroup[node.group].x;
+          }
+        })
+        .strength(0.1)
+      )
       .d3Force('y', forceY(node => this.nodePositionsByGroup[node.group].y).strength(0.1))
-      .zoom(0.999, 100)
+      .d3Force('center', null)
+      .zoom(0.9)
+      .autoPauseRedraw(false)
   }
 
   private createNodeCanvasObject(node: GraphNodeObject, ctx: CanvasRenderingContext2D) {
+    const radius = Math.sqrt(node.size) * this.NODE_R;
+
+    const currentTimestamp = Date.now();
+    const flickerStartTime = this.nodesFlickerStartTimes.get(node.id);
+
+    /**
+     * Adding flickering effect for arb nodes that will expire soon
+     */
+    if (flickerStartTime) {
+      const elapsedTime =  currentTimestamp - flickerStartTime;
+      const phase = (elapsedTime % this.flickerInterval) / this.flickerInterval;
+      const opacity = 0.8 * (0.5 + 0.5 * Math.sin(2 * Math.PI * phase));
+
+      ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+      ctx.beginPath();
+      ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
+      ctx.fill();
+    }
+
     ctx.font = '8px Sans-Serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = 'black';
 
+    /**
+     * Adding appropriate label text for each node
+     */
     if (node.group === NodeGroup.ARBITRAGE) {
-      const profit = node.data.profit
-      if (profit > 0 && node.size > 20) {
+      const profit = node.data.profit;
+      if (profit > 0) {
         ctx.fillText(`$${profit}`, node.x, node.y);
       }
     } else {
       ctx.fillText(`${node.label}`, node.x, node.y);
     }
 
-    const radius = Math.sqrt(node.size) * this.NODE_R
-
     if (this.highlightNodeIds.has(node.id)) {
+      /**
+       * Adding stroke effect for nodes that are highlighted
+       */
+
+      const lineWidth = 5
       ctx.beginPath();
-      ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
-      ctx.lineWidth = 5;
+      ctx.arc(node.x, node.y, radius + lineWidth / 2, 0, 2 * Math.PI, false);
+      ctx.lineWidth = lineWidth;
       ctx.strokeStyle = 'black'
       ctx.stroke();
+
+      if (node.group === NodeGroup.ARBITRAGE) {
+        /**
+         * Adding elapsed seconds counter for arb node that is highlighted
+         */
+
+        const elapsedTime = currentTimestamp - node.createdAt;
+        const elapsedSeconds = Math.floor(elapsedTime / 1000);
+        const seconds = elapsedSeconds % 60;
+
+        ctx.font = 'bold 20px Sans-Serif';
+        ctx.fillText(`${seconds}s`, node.x, node.y - radius - 20);
+      }
     } else if (this.highlightNodeIds.size > 0) {
+
+      /**
+       * Adding overlay effect for nodes that are node highlighted
+       */
       ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
       ctx.beginPath();
       ctx.arc(node.x, node.y, radius, 0, 2 * Math.PI, false);
