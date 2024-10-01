@@ -1,0 +1,25 @@
+<div class="arbitrage-graph-filters-wrapper">
+  <mat-accordion>
+    <mat-expansion-panel>
+      <mat-expansion-panel-header>
+        <mat-panel-title>
+          <div class="panel-title">
+            <div>Filters</div>
+            <button mat-flat-button (click)="clearFilters($event)">Clear filters</button>
+          </div>
+        </mat-panel-title>
+      </mat-expansion-panel-header>
+
+      <form [formGroup]="filtersForm">
+        <app-range-filter label="Profit" formControlName="profit"></app-range-filter>
+        <app-range-filter label="Amount" formControlName="amount"></app-range-filter>
+
+        <div class="chip-filters">
+          <app-chip-filter label="Exchanges" formControlName="exchanges"></app-chip-filter>
+          <app-chip-filter label="Chains" formControlName="chains"></app-chip-filter>
+          <app-chip-filter label="Symbols" formControlName="symbols"></app-chip-filter>
+        </div>
+      </form>
+    </mat-expansion-panel>
+  </mat-accordion>
+</div>

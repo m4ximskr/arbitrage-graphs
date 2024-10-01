@@ -52,6 +52,8 @@ export interface ArbitrageData {
   symbol: string,
   amountIn: number;
   profit: number;
+  createdAt?: number;
+  lifetime?: number;
 }
 
 export interface ParentData {

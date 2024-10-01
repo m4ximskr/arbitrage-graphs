@@ -2,7 +2,7 @@ import {
   ArbitrageData,
   ArbitrageLocation,
   ArbitrageLocationType,
-} from "../arbitrage-graph/arbitrage-graph.model";
+} from "../components/arbitrage-graph/arbitrage-graph.model";
 
 export function generateRandomArbitrage(): ArbitrageData {
   const exchanges = ['Binance', 'Kraken', 'Coinbase', 'Bitfinex', 'Huobi'];

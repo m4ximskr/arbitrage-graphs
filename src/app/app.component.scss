@@ -1,33 +1,18 @@
+.navigation {
+  margin: 50px 5px 5px 5px;
+  display: grid;
+  grid-auto-flow: row;
+  grid-row-gap: 10px;
+}
+
+.sidenav-menu-button {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+}
+
 .page-wrapper {
   position: relative;
-
-  .filters-wrapper {
-    position: absolute;
-    z-index: 1;
-
-    mat-expansion-panel {
-      background: rgba(255, 255, 255, 0.7);
-      width: 750px;
-
-      .panel-title {
-        width: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-      }
-
-      ::ng-deep {
-        .mat-expansion-panel-content {
-          max-height: calc(100vh - 100px);
-          overflow-y: auto;
-        }
-      }
-    }
-
-    .chip-filters {
-      display: grid;
-      grid-auto-flow: column;
-      grid-gap: 20px;
-    }
-  }
+  width: 100vw;
+  height: 100vh;
 }

@@ -13,10 +13,11 @@ import {
   FormBuilder,
   FormControl,
   FormGroup,
-  NG_VALUE_ACCESSOR
+  NG_VALUE_ACCESSOR, ReactiveFormsModule
 } from "@angular/forms";
-import {MatInput} from "@angular/material/input";
+import {MatInput, MatInputModule} from "@angular/material/input";
 import {takeUntilDestroyed} from "@angular/core/rxjs-interop";
+import {MatFormFieldModule} from "@angular/material/form-field";
 
 interface RangeFilterForm {
   from: FormControl<string>;
@@ -40,6 +41,8 @@ export interface RangeFilterValue {
     },
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: true,
+  imports: [MatFormFieldModule, MatInputModule, ReactiveFormsModule]
 })
 export class RangeFilterComponent implements ControlValueAccessor {
   @Input() label = 'Range'

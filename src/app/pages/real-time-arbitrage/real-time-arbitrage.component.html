@@ -1,6 +1,6 @@
-<div class="arbitrage-graph-wrapper">
-  <div #graph></div>
-
+<div class="real-time-arbitrage">
+  <app-arbitrage-graph-filters></app-arbitrage-graph-filters>
+  <app-arbitrage-graph [nodes]="graphNodes()" [links]="graphLinks()" [showElapsedSeconds]="true"></app-arbitrage-graph>
   <button mat-flat-button (click)="toggleArbitrageGraph()">
     @if (areEventsFiring) {
     <mat-icon>stop</mat-icon>

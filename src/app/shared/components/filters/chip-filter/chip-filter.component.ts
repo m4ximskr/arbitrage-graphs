@@ -1,6 +1,8 @@
 import {ChangeDetectionStrategy, ChangeDetectorRef, Component, forwardRef, Input, signal} from '@angular/core';
-import {MatChipEditedEvent, MatChipInputEvent} from "@angular/material/chips";
+import {MatChipEditedEvent, MatChipInputEvent, MatChipsModule} from "@angular/material/chips";
 import {ControlValueAccessor, NG_VALUE_ACCESSOR} from "@angular/forms";
+import {MatFormFieldModule} from "@angular/material/form-field";
+import {MatIconModule} from "@angular/material/icon";
 
 export interface ChipFilterValue {
   name: string;
@@ -17,6 +19,8 @@ export interface ChipFilterValue {
     },
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: true,
+  imports: [MatFormFieldModule, MatChipsModule, MatIconModule]
 })
 export class ChipFilterComponent implements ControlValueAccessor {
   @Input() label = 'Options'

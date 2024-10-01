@@ -1,29 +1,21 @@
-<div class="page-wrapper">
-  <div class="filters-wrapper">
-    <mat-accordion>
-      <mat-expansion-panel>
-        <mat-expansion-panel-header>
-          <mat-panel-title>
-            <div class="panel-title">
-              <div>Filters</div>
-              <button mat-flat-button (click)="clearFilters($event)">Clear filters</button>
-            </div>
-          </mat-panel-title>
-        </mat-expansion-panel-header>
+<mat-sidenav-container>
+  <mat-sidenav #sidenav mode="over">
+    <div class="navigation">
+      <button mat-mini-fab class="sidenav-menu-button" (click)="sidenav.toggle()">
+        <mat-icon>menu</mat-icon>
+      </button>
+      <a mat-button routerLink="/real-time" (click)="sidenav.close()">Real time arbitrage</a>
+      <a mat-button routerLink="/all-time" (click)="sidenav.close()">All time arbitrage</a>
+    </div>
+  </mat-sidenav>
 
-        <form [formGroup]="filtersForm">
-          <app-range-filter label="Profit" formControlName="profit"></app-range-filter>
-          <app-range-filter label="Amount" formControlName="amount"></app-range-filter>
+  <mat-sidenav-content>
+      <button mat-mini-fab class="sidenav-menu-button" (click)="sidenav.toggle()">
+        <mat-icon>menu</mat-icon>
+      </button>
 
-          <div class="chip-filters">
-            <app-chip-filter label="Exchanges" formControlName="exchanges"></app-chip-filter>
-            <app-chip-filter label="Chains" formControlName="chains"></app-chip-filter>
-            <app-chip-filter label="Symbols" formControlName="symbols"></app-chip-filter>
-          </div>
-        </form>
-      </mat-expansion-panel>
-    </mat-accordion>
-  </div>
-
-  <app-arbitrage-graph></app-arbitrage-graph>
-</div>
+    <div class="page-wrapper">
+      <router-outlet></router-outlet>
+    </div>
+  </mat-sidenav-content>
+</mat-sidenav-container>
