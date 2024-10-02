@@ -1,10 +1,8 @@
 import {
   AfterViewInit,
   ChangeDetectionStrategy,
-  ChangeDetectorRef,
   Component,
   DestroyRef,
-  ElementRef,
   ViewChild,
 } from '@angular/core';
 
@@ -74,6 +72,7 @@ export class ArbitrageGraphComponent implements AfterViewInit {
     this.prepareNodePositionsMap();
     this.initializeGraph();
     this.listenToFilterChanges();
+
   }
 
   toggleArbitrageGraph() {
